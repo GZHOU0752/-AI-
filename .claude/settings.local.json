@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn dependency:tree -Dincludes=org.slf4j:slf4j-simple)",
+      "Bash(git *)"
+    ]
+  }
+}

@@ -1,0 +1,87 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /ruima-ai
+
+spring:
+  application:
+    name: ruima-ai-center
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    database: 0
+    lettuce:
+      pool:
+        max-active: 20
+        max-idle: 10
+        min-idle: 5
+    timeout: 3000ms
+
+# Langchain4j / LLM 配置
+langchain4j:
+  dashscope:
+    api-key: ${DASHSCOPE_API_KEY:}
+    chat-model: qwen-plus
+    embedding-model: text-embedding-v3
+    temperature: 0.3
+    max-tokens: 4096
+  memory:
+    short-term:
+      window-size: 10
+      token-threshold: 32768
+      max-summary-length: 500
+      redis-ttl: 3600
+    long-term:
+      similarity-threshold: 0.75
+      top-k: 5
+      embedding-dimension: 1024
+
+# 文档解析配置
+tika:
+  max-file-size: 50MB
+  supported-formats:
+    - pdf
+    - docx
+    - doc
+    - txt
+    - md
+    - java
+    - xml
+    - json
+    - yaml
+
+# AI Code Review 配置
+aicr:
+  max-files-per-review: 50
+  max-diff-lines: 5000
+  output-format: markdown
+  default-dimensions:
+    - code-quality
+    - security
+    - maintainability
+    - architecture
+    - java-specific
+    - database
+    - testing
+    - performance
+
+# RAG 配置
+rag:
+  chunking:
+    strategy: semantic
+    max-chunk-size: 1000
+    chunk-overlap: 200
+  retrieval:
+    top-k: 5
+    min-score: 0.7
+    hybrid-search-weight-bm25: 0.3
+    hybrid-search-weight-vector: 0.7
+  rewrite:
+    enabled: true
+    max-rewrite-count: 3
+
+# 日志配置
+logging:
+  level:
+    com.ruima.ai.center: DEBUG
+    dev.langchain4j: INFO
