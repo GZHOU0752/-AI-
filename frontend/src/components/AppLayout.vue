@@ -1,12 +1,13 @@
 <template>
   <el-container class="app-layout">
-    <!-- 侧边栏 -->
+    <!-- Sidebar -->
     <el-aside :width="isCollapse ? '64px' : '220px'" class="app-sidebar">
-      <div class="sidebar-header">
-        <div class="logo" @click="router.push('/code-review')">
-          <el-icon :size="24"><Cpu /></el-icon>
-          <span v-show="!isCollapse" class="logo-text">睿码AI中心</span>
-        </div>
+      <div class="sidebar-brand" @click="router.push('/code-review')">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <rect width="24" height="24" rx="6" fill="#00b96b"/>
+          <path d="M7 7.5C7 7.5 8.5 5.5 12 5.5C15.5 5.5 17 7 17 7.5V16.5C17 17 15.5 18.5 12 18.5C8.5 18.5 7 17 7 16.5V7.5Z" fill="white" opacity="0.95"/>
+        </svg>
+        <span v-show="!isCollapse" class="brand-name">睿码AI中心</span>
       </div>
 
       <el-menu
@@ -14,14 +15,11 @@
         :collapse="isCollapse"
         :collapse-transition="false"
         router
-        background-color="transparent"
-        text-color="#64748b"
-        active-text-color="#4a90d9"
-        class="sidebar-menu"
+        class="sidebar-nav"
       >
         <el-menu-item index="/code-review">
           <el-icon><DocumentChecked /></el-icon>
-          <template #title>AI代码评审</template>
+          <template #title>AI 代码评审</template>
         </el-menu-item>
         <el-menu-item index="/knowledge-base">
           <el-icon><ChatDotRound /></el-icon>
@@ -36,31 +34,31 @@
           <template #title>单元测试</template>
         </el-menu-item>
       </el-menu>
+
+      <div class="sidebar-footer" v-show="!isCollapse && authState.loggedIn">
+        <div class="footer-user">
+          <span class="footer-avatar">{{ authState.username?.charAt(0) }}</span>
+          <span class="footer-name">{{ authState.username }}</span>
+        </div>
+        <button class="footer-action" @click="showPwd=true">修改密码</button>
+      </div>
     </el-aside>
 
-    <!-- 主内容 -->
+    <!-- Main -->
     <el-container class="app-main">
       <el-header class="app-header">
-        <div class="header-left">
-          <el-button
-            text
-            @click="isCollapse = !isCollapse"
-            class="collapse-btn"
-          >
-            <el-icon :size="20">
-              <Fold v-if="!isCollapse" />
-              <Expand v-else />
-            </el-icon>
-          </el-button>
-        </div>
+        <button class="toggle-btn" @click="isCollapse = !isCollapse">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" :class="{ flipped: isCollapse }">
+            <path d="M6 3L11 8L6 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <div class="header-right">
-          <el-tooltip content="API 状态" placement="bottom">
-            <el-tag :type="apiOnline ? 'success' : 'danger'" size="small" effect="dark">
-              {{ apiOnline ? '服务在线' : '服务离线' }}
-            </el-tag>
-          </el-tooltip>
-          <el-divider direction="vertical" />
-          <span class="header-time">{{ currentTime }}</span>
+          <span class="status-indicator" :class="apiOnline ? 'ok' : 'fail'"></span>
+          <span class="status-label">{{ apiOnline ? '正常' : '离线' }}</span>
+          <span class="header-sep"></span>
+          <span class="header-clock">{{ currentTime }}</span>
+          <span class="header-sep"></span>
+          <button class="logout-link" v-if="authState.loggedIn" @click="doLogout">退出</button>
         </div>
       </el-header>
 
@@ -72,136 +70,256 @@
         </router-view>
       </el-main>
     </el-container>
+
+    <el-dialog v-model="showPwd" title="修改密码" width="360px" :close-on-click-modal="false" center>
+      <el-form label-position="top">
+        <el-form-item label="原密码"><el-input v-model="pwd.old" type="password" size="large" maxlength="6" /></el-form-item>
+        <el-form-item label="新密码"><el-input v-model="pwd.new1" type="password" size="large" maxlength="6" placeholder="6位数字" /></el-form-item>
+        <el-form-item label="确认新密码"><el-input v-model="pwd.new2" type="password" size="large" maxlength="6" /></el-form-item>
+        <el-button type="primary" size="large" style="width:100%" :loading="pwdLoading" @click="doChangePwd">确认修改</el-button>
+      </el-form>
+    </el-dialog>
   </el-container>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import dayjs from 'dayjs'
+import { DocumentChecked, ChatDotRound, Connection, Notebook } from '@element-plus/icons-vue'
+import { useAuth } from '@/stores/auth'
+import { authApi } from '@/api'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const route = useRoute()
+const { state: authState, logout } = useAuth()
 
 const isCollapse = ref(false)
 const apiOnline = ref(true)
 const currentTime = ref('')
 
 let timer = null
-
-const activeMenu = computed(() => {
-  return route.path
-})
+const activeMenu = computed(() => route.path)
 
 onMounted(() => {
-  timer = setInterval(() => {
-    currentTime.value = dayjs().format('YYYY-MM-DD HH:mm:ss')
-  }, 1000)
+  tick()
+  timer = setInterval(tick, 30000)
 })
+onUnmounted(() => { if (timer) clearInterval(timer) })
 
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
-})
+function tick() {
+  const d = new Date()
+  currentTime.value = d.toLocaleDateString('zh-CN', { month:'2-digit', day:'2-digit' }) + ' ' +
+    d.toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })
+}
+
+function doLogout() { logout(); router.push('/login') }
+
+const showPwd = ref(false)
+const pwdLoading = ref(false)
+const pwd = reactive({ old: '', new1: '', new2: '' })
+async function doChangePwd() {
+  if (!pwd.old || !pwd.new1) { ElMessage.warning('请填写完整'); return }
+  if (pwd.new1.length !== 6) { ElMessage.warning('新密码必须为6位'); return }
+  if (pwd.new1 !== pwd.new2) { ElMessage.warning('两次输入不一致'); return }
+  pwdLoading.value = true
+  try {
+    await authApi.changePassword(authState.userId, pwd.old, pwd.new1)
+    ElMessage.success('密码修改成功，请重新登录')
+    logout(); router.push('/login')
+  } catch(e) { ElMessage.error(e.message || '修改失败') }
+  finally { pwdLoading.value = false; pwd = { old: '', new1: '', new2: '' } }
+}
 </script>
 
 <style scoped>
-.app-layout {
-  height: 100vh;
-  overflow: hidden;
-}
+.app-layout { height: 100dvh; overflow: hidden; }
 
+/* Sidebar */
 .app-sidebar {
-  background: #ffffff;
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border);
+  transition: width 0.2s var(--ease);
   overflow: hidden;
-  transition: width 0.3s;
-  border-right: 1px solid var(--border-color);
 }
 
-.sidebar-header {
-  height: 64px;
+.sidebar-brand {
+  height: 52px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  border-bottom: 1px solid var(--border-color);
+  gap: 12px;
+  padding: 0 18px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--primary-color);
-}
-
-.logo-text {
-  font-size: 18px;
-  font-weight: 700;
+.brand-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
   white-space: nowrap;
-  color: var(--primary-color);
+  letter-spacing: 0;
 }
 
-.sidebar-menu {
-  border-right: none;
-  margin-top: 8px;
+.sidebar-nav {
+  flex: 1;
+  border-right: none !important;
+  padding: 6px 10px;
+  overflow-y: auto;
 }
 
-.sidebar-menu .el-menu-item {
-  margin: 4px 8px;
-  border-radius: 8px;
+:deep(.sidebar-nav .el-menu-item) {
+  margin: 1px 0;
+  border-radius: var(--radius-sm);
+  height: 38px;
+  line-height: 38px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  transition: all 0.12s var(--ease);
 }
 
-.sidebar-menu .el-menu-item:hover {
-  background-color: #e8f2fc !important;
+:deep(.sidebar-nav .el-menu-item:hover) {
+  background: var(--color-brand-light) !important;
+  color: var(--color-brand) !important;
 }
 
-.sidebar-menu .el-menu-item.is-active {
-  background-color: #d0e7ff !important;
-  color: var(--primary-color) !important;
+:deep(.sidebar-nav .el-menu-item.is-active) {
+  background: var(--color-brand-light) !important;
+  color: var(--color-brand) !important;
   font-weight: 600;
 }
 
-.app-main {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.sidebar-footer {
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--color-border-light);
+  flex-shrink: 0;
 }
+
+.footer-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.footer-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--color-brand);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.footer-name {
+  font-size: 13px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.footer-action {
+  width: 100%;
+  border: none;
+  background: var(--color-border-light);
+  padding: 5px 0;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all .15s;
+  font-family: var(--font-sans);
+}
+.footer-action:hover { background: var(--color-brand-light); color: var(--color-brand); }
+
+/* Header */
+.app-main { flex-direction: column; overflow: hidden; background: var(--color-bg); }
 
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #ffffff;
-  border-bottom: 1px solid var(--border-color);
-  padding: 0 24px;
-  height: 56px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 20px;
+  height: 48px;
   flex-shrink: 0;
 }
 
-.header-left {
+.toggle-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
 }
 
-.collapse-btn {
-  padding: 8px;
-  font-size: 18px;
+.toggle-btn:hover {
+  background: var(--color-border-light);
+  color: var(--color-text);
+}
+
+.toggle-btn svg {
+  transition: transform 0.2s var(--ease);
+}
+
+.toggle-btn svg.flipped {
+  transform: rotate(180deg);
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  font-size: 12px;
 }
 
-.header-time {
-  font-size: 13px;
-  color: var(--text-secondary);
+.status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.status-indicator.ok { background: var(--color-success); }
+.status-indicator.fail { background: var(--color-danger); }
+
+.status-label { color: var(--color-text-secondary); }
+
+.header-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--color-border);
+}
+
+.header-clock {
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
-.app-content {
-  background: var(--bg-color);
-  overflow-y: auto;
-  padding: 0;
+.logout-link {
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-sans);
 }
+.logout-link:hover { color: var(--color-danger); background: var(--color-danger-bg); }
+
+.app-content { overflow-y: auto; }
 </style>

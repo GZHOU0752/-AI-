@@ -122,4 +122,14 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
         return results;
     }
+
+    @Override
+    public List<Map<String, Object>> listDocuments() {
+        return ragService.listDocuments();
+    }
+
+    @Override
+    public boolean deleteDocument(String documentId) {
+        return ragService.deleteDocument(documentId);
+    }
 }

@@ -2,186 +2,85 @@
   <div class="page-container">
     <div class="page-header">
       <h2>单元测试</h2>
+      <p>生成 JUnit 5 + Mockito 测试代码，分析覆盖率</p>
     </div>
 
-    <el-tabs v-model="activeTab" type="border-card">
-      <el-tab-pane label="生成测试" name="generate">
+    <el-tabs v-model="tab" type="border-card">
+      <!-- Generate tests -->
+      <el-tab-pane label="生成测试" name="gen">
         <el-row :gutter="20">
-          <el-col :span="10">
+          <el-col :span="8">
             <el-card shadow="never">
-              <template #header>
-                <span style="font-weight:600">源码文件</span>
+              <template #header><span class="card-title">源码输入</span></template>
+              <div class="mode-tabs">
+                <button :class="['mode-btn',{active:gMode==='file'}]" @click="gMode='file'">上传文件</button>
+                <button :class="['mode-btn',{active:gMode==='paste'}]" @click="gMode='paste'">粘贴代码</button>
+              </div>
+              <template v-if="gMode==='file'">
+                <el-upload drag multiple :auto-upload="false" :on-change="onGenAdd" :on-remove="onGenDel" :file-list="genFiles" accept=".java">
+                  <div class="zone"><svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="4" y="5" width="20" height="18" rx="3" stroke="#8f959e" stroke-width="1.4"/><path d="M9 14L13 10L17 14" stroke="#8f959e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 10V19" stroke="#8f959e" stroke-width="1.2" stroke-linecap="round"/></svg><span class="zone-label">上传 Java 源码</span></div>
+                </el-upload>
+                <input ref="gfRef" type="file" webkitdirectory multiple style="display:none" @change="onGenFolder" />
+                <el-button size="small" class="aux-btn" @click="gfRef?.click()">选择文件夹</el-button>
               </template>
-
-              <el-upload
-                drag
-                multiple
-                :auto-upload="false"
-                :on-change="handleGenFile"
-                :on-remove="handleGenFileRemove"
-                :file-list="genFileList"
-                accept=".java"
-              >
-                <el-icon :size="40" color="#4a90d9"><UploadFilled /></el-icon>
-                <div class="upload-text">上传 Java 源码文件</div>
-              </el-upload>
-
-              <input
-                ref="genFolderInputRef"
-                type="file"
-                webkitdirectory
-                multiple
-                style="display:none"
-                @change="handleGenFolderSelect"
-              />
-              <el-button size="small" style="width:100%;margin-top:8px" @click="genFolderInputRef?.click()">
-                <el-icon><FolderOpened /></el-icon> 上传源码文件夹
-              </el-button>
-
-              <el-button
-                type="primary"
-                size="large"
-                style="width:100%;margin-top:16px"
-                :loading="generating"
-                :disabled="genFileList.length === 0"
-                @click="doGenerate"
-              >
-                {{ generating ? '生成中...' : '生成测试代码' }}
-              </el-button>
+              <template v-if="gMode==='paste'">
+                <el-input v-model="gCode" type="textarea" :rows="8" placeholder="粘贴 Java 源码..." class="code-area" />
+                <el-input v-model="gName" placeholder="类名（可选）" size="small" class="mt-sm" />
+              </template>
+              <el-button type="primary" size="large" class="act-btn" :loading="gen" :disabled="!gReady" @click="doGen">{{ gen?'生成中...':'生成测试代码' }}</el-button>
             </el-card>
           </el-col>
-
-          <el-col :span="14">
-            <el-card shadow="never" v-loading="generating">
-              <template #header>
-                <div class="card-flex-header">
-                  <span style="font-weight:600">生成的测试代码</span>
-                  <el-button v-if="generatedCode" size="small" @click="copyCode">
-                    <el-icon><CopyDocument /></el-icon> 复制
-                  </el-button>
-                </div>
-              </template>
-              <div v-if="!generatedCode" class="empty-state">
-                <el-icon :size="48" color="#cbd5e1"><Notebook /></el-icon>
-                <p>上传源码文件后点击「生成测试代码」</p>
-              </div>
-              <el-input v-else :model-value="generatedCode" type="textarea" :rows="22" readonly class="code-output" />
+          <el-col :span="16">
+            <el-card shadow="never" v-loading="gen">
+              <template #header><div class="out-head"><span class="card-title">输出</span><el-button v-if="out" size="small" @click="copyG">复制</el-button></div></template>
+              <div v-if="!out" class="empty">上传文件或粘贴代码后点击生成</div>
+              <el-input v-else :model-value="out" type="textarea" :rows="19" readonly class="code-out" />
             </el-card>
           </el-col>
         </el-row>
       </el-tab-pane>
 
-      <el-tab-pane label="覆盖率分析" name="coverage">
+      <!-- Coverage -->
+      <el-tab-pane label="覆盖率分析" name="cov">
         <el-row :gutter="20">
-          <el-col :span="10">
+          <el-col :span="8">
             <el-card shadow="never">
-              <template #header>
-                <span style="font-weight:600">覆盖率输入</span>
+              <template #header><span class="card-title">输入</span></template>
+              <div class="mode-tabs">
+                <button :class="['mode-btn',{active:cMode==='file'}]" @click="cMode='file'">上传文件</button>
+                <button :class="['mode-btn',{active:cMode==='paste'}]" @click="cMode='paste'">粘贴代码</button>
+              </div>
+              <template v-if="cMode==='file'">
+                <div class="fld"><div class="fld-label">源码文件</div>
+                  <el-upload drag multiple :auto-upload="false" :on-change="f=>onCovAdd(f,'src')" :on-remove="f=>onCovDel(f,'src')" :file-list="srcFiles" accept=".java">
+                    <div class="zone-sm"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="3" width="16" height="14" rx="2" stroke="#8f959e" stroke-width="1.2"/><path d="M6 10L9 7L12 10" stroke="#8f959e" stroke-width="1.1" stroke-linecap="round"/><path d="M9 7V14" stroke="#8f959e" stroke-width="1.1" stroke-linecap="round"/></svg><span class="zone-label-sm">上传源码</span></div>
+                  </el-upload>
+                  <input ref="csfRef" type="file" webkitdirectory multiple style="display:none" @change="e=>onCovFolder(e,'src')" />
+                  <el-button size="small" class="aux-btn" @click="csfRef?.click()">选择文件夹</el-button>
+                </div>
+                <div class="fld"><div class="fld-label">测试代码（可选）</div>
+                  <el-upload drag multiple :auto-upload="false" :on-change="f=>onCovAdd(f,'tst')" :on-remove="f=>onCovDel(f,'tst')" :file-list="tstFiles" accept=".java">
+                    <div class="zone-sm"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="3" width="16" height="14" rx="2" stroke="#8f959e" stroke-width="1.2"/><path d="M6 10L9 7L12 10" stroke="#8f959e" stroke-width="1.1" stroke-linecap="round"/><path d="M9 7V14" stroke="#8f959e" stroke-width="1.1" stroke-linecap="round"/></svg><span class="zone-label-sm">上传测试代码</span></div>
+                  </el-upload>
+                  <input ref="ctfRef" type="file" webkitdirectory multiple style="display:none" @change="e=>onCovFolder(e,'tst')" />
+                  <el-button size="small" class="aux-btn" @click="ctfRef?.click()">选择文件夹</el-button>
+                </div>
               </template>
-
-              <div style="margin-bottom:16px">
-                <div class="file-label">源码文件</div>
-                <el-upload
-                  drag
-                  multiple
-                  :auto-upload="false"
-                  :on-change="(f) => handleCovFile(f, 'source')"
-                  :on-remove="(f) => handleCovFileRemove(f, 'source')"
-                  :file-list="sourceFileList"
-                  accept=".java"
-                >
-                  <el-icon :size="32" color="#4a90d9"><UploadFilled /></el-icon>
-                  <div class="upload-text">上传源码</div>
-                </el-upload>
-
-                <input
-                  ref="covSourceFolderRef"
-                  type="file"
-                  webkitdirectory
-                  multiple
-                  style="display:none"
-                  @change="(e) => handleCovFolderSelect(e, 'source')"
-                />
-                <el-button size="small" style="width:100%;margin-top:8px" @click="covSourceFolderRef?.click()">
-                  <el-icon><FolderOpened /></el-icon> 上传源码文件夹
-                </el-button>
-              </div>
-
-              <div style="margin-bottom:16px">
-                <div class="file-label">测试代码文件（可选）</div>
-                <el-upload
-                  drag
-                  multiple
-                  :auto-upload="false"
-                  :on-change="(f) => handleCovFile(f, 'test')"
-                  :on-remove="(f) => handleCovFileRemove(f, 'test')"
-                  :file-list="testFileList"
-                  accept=".java"
-                >
-                  <el-icon :size="32" color="#4a90d9"><UploadFilled /></el-icon>
-                  <div class="upload-text">上传已有测试代码</div>
-                </el-upload>
-
-                <input
-                  ref="covTestFolderRef"
-                  type="file"
-                  webkitdirectory
-                  multiple
-                  style="display:none"
-                  @change="(e) => handleCovFolderSelect(e, 'test')"
-                />
-                <el-button size="small" style="width:100%;margin-top:8px" @click="covTestFolderRef?.click()">
-                  <el-icon><FolderOpened /></el-icon> 上传测试代码文件夹
-                </el-button>
-              </div>
-
-              <el-button
-                type="primary"
-                size="large"
-                style="width:100%"
-                :loading="analyzing"
-                :disabled="sourceFileList.length === 0"
-                @click="doAnalyze"
-              >
-                分析覆盖率
-              </el-button>
+              <template v-if="cMode==='paste'">
+                <div class="fld"><div class="fld-label">源码</div><el-input v-model="cSrcCode" type="textarea" :rows="6" placeholder="粘贴源码..." class="code-area" /></div>
+                <div class="fld"><div class="fld-label">测试代码（可选）</div><el-input v-model="cTstCode" type="textarea" :rows="4" placeholder="粘贴已有测试代码..." class="code-area" /></div>
+                <el-input v-model="cName" placeholder="类名（可选）" size="small" />
+              </template>
+              <el-button type="primary" size="large" class="act-btn" :loading="ana" :disabled="!cReady" @click="doAna">分析覆盖率</el-button>
             </el-card>
           </el-col>
-
-          <el-col :span="14">
-            <el-card shadow="never" v-loading="analyzing">
-              <template #header>
-                <span style="font-weight:600">覆盖率报告</span>
-              </template>
-
-              <div v-if="!coverageReport" class="empty-state">
-                <el-icon :size="48" color="#cbd5e1"><PieChart /></el-icon>
-                <p>上传源码后点击「分析覆盖率」</p>
-              </div>
-
-              <div v-if="coverageReport" class="coverage-report">
-                <el-row :gutter="16">
-                  <el-col :span="6" v-for="metric in metrics" :key="metric.key">
-                    <div class="coverage-metric">
-                      <el-progress type="dashboard" :percentage="metric.value" :color="metric.color" :stroke-width="8" :width="100">
-                        <template #default="{ percentage }">
-                          <span class="metric-value">{{ percentage }}%</span>
-                        </template>
-                      </el-progress>
-                      <p class="metric-label">{{ metric.label }}</p>
-                      <p class="metric-target">目标: ≥{{ metric.target }}%</p>
-                    </div>
-                  </el-col>
-                </el-row>
-
-                <el-divider />
-
-                <el-result :icon="ratingIcon" :title="coverageReport.overallRating">
-                  <template #extra>
-                    <el-tag :type="riskTagType" size="large">生产风险: {{ coverageReport.riskLevel }}</el-tag>
-                    <el-tag type="warning" size="large" class="ml-8">建议修复时间: {{ coverageReport.suggestedFixTime }}</el-tag>
-                  </template>
-                </el-result>
+          <el-col :span="16">
+            <el-card shadow="never" v-loading="ana">
+              <template #header><span class="card-title">报告</span></template>
+              <div v-if="!cov" class="empty">上传文件或粘贴代码后点击分析</div>
+              <div v-if="cov" class="cov-dash">
+                <div class="cov-row"><div v-for="m in metrics" :key="m.key" class="cov-cell"><el-progress type="dashboard" :percentage="m.val" :color="m.color" :stroke-width="6" :width="80"><template #default="{percentage}"><span class="cov-pct">{{percentage}}%</span></template></el-progress><p class="cov-label">{{ m.label }}</p></div></div>
+                <el-divider /><div class="cov-rating"><span class="cov-grade" :class="'g-'+cov.overallRating">{{ cov.overallRating }}</span><div class="cov-tags"><span class="rtag" :class="'r-'+cov.riskLevel">风险: {{ cov.riskLevel }}</span><span class="rtag r-neutral">修复时间: {{ cov.suggestedFixTime }}</span></div></div>
               </div>
             </el-card>
           </el-col>
@@ -193,178 +92,83 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { UploadFilled, CopyDocument, Notebook, PieChart, FolderOpened } from '@element-plus/icons-vue'
 import { unitTest } from '@/api'
 import { ElMessage } from 'element-plus'
 
-const activeTab = ref('generate')
+const tab = ref('gen')
 
-const genFileList = ref([])
-const generating = ref(false)
-const generatedCode = ref('')
-const genFolderInputRef = ref(null)
+// Generate
+const gMode = ref('file'); const gCode = ref(''); const gName = ref('')
+const genFiles = ref([]); const gen = ref(false); const out = ref(''); const gfRef = ref(null)
+const gReady = computed(() => gMode.value==='file' ? genFiles.value.length>0 : gCode.value.trim().length>0)
 
-const sourceFileList = ref([])
-const testFileList = ref([])
-const analyzing = ref(false)
-const coverageReport = ref(null)
-const covSourceFolderRef = ref(null)
-const covTestFolderRef = ref(null)
+// Coverage
+const cMode = ref('file'); const cSrcCode = ref(''); const cTstCode = ref(''); const cName = ref('')
+const srcFiles = ref([]); const tstFiles = ref([]); const ana = ref(false); const cov = ref(null)
+const csfRef = ref(null); const ctfRef = ref(null)
+const cReady = computed(() => cMode.value==='file' ? srcFiles.value.length>0 : cSrcCode.value.trim().length>0)
 
-const metrics = computed(() => {
-  if (!coverageReport.value) return []
-  const r = coverageReport.value
-  return [
-    { key: 'line', label: '行覆盖率', value: +(r.lineCoverage * 100).toFixed(1), target: 80, color: '#22c55e' },
-    { key: 'branch', label: '分支覆盖率', value: +(r.branchCoverage * 100).toFixed(1), target: 75, color: '#4a90d9' },
-    { key: 'method', label: '方法覆盖率', value: +(r.methodCoverage * 100).toFixed(1), target: 100, color: '#f59e0b' },
-    { key: 'exception', label: '异常覆盖率', value: +(r.exceptionCoverage * 100).toFixed(1), target: 100, color: '#ef4444' }
-  ]
-})
+const metrics = computed(() => !cov.value ? [] : [
+  { key:'line',label:'行覆盖率',val:+(cov.value.lineCoverage*100).toFixed(1),color:'#00b96b'},
+  { key:'branch',label:'分支覆盖率',val:+(cov.value.branchCoverage*100).toFixed(1),color:'#34c759'},
+  { key:'method',label:'方法覆盖率',val:+(cov.value.methodCoverage*100).toFixed(1),color:'#ff9500'},
+  { key:'exception',label:'异常覆盖率',val:+(cov.value.exceptionCoverage*100).toFixed(1),color:'#ff3b30'}
+])
 
-const ratingIcon = computed(() => {
-  const r = coverageReport.value?.overallRating
-  if (r === '优秀' || r === '良好') return 'success'
-  if (r === '待改进') return 'warning'
-  return 'error'
-})
+// Gen handlers
+function onGenAdd(f){genFiles.value.push(f)}; function onGenDel(f){const i=genFiles.value.indexOf(f);if(i>-1)genFiles.value.splice(i,1)}
+function onGenFolder(e){const fs=e.target.files;if(fs?.length)for(const f of fs)genFiles.value.push({name:f.webkitRelativePath||f.name,raw:f});e.target.value=''}
+// Cov handlers
+function onCovAdd(f,t){(t==='src'?srcFiles:tstFiles).value.push(f)}
+function onCovDel(f,t){const l=(t==='src'?srcFiles:tstFiles).value;const i=l.indexOf(f);if(i>-1)l.splice(i,1)}
+function onCovFolder(e,t){const fs=e.target.files;if(fs?.length)for(const f of fs)(t==='src'?srcFiles:tstFiles).value.push({name:f.webkitRelativePath||f.name,raw:f});e.target.value=''}
 
-const riskTagType = computed(() => {
-  const r = coverageReport.value?.riskLevel
-  if (r === '低') return 'success'
-  if (r === '中') return 'warning'
-  return 'danger'
-})
-
-function handleGenFile(file) {
-  genFileList.value.push(file)
+async function doGen(){
+  gen.value=true;out.value=''
+  try{
+    if(gMode.value==='paste'){const r=await unitTest.generate({sourceCode:gCode.value,targetClassName:gName.value||'PastedCode'});out.value=r.testCode||''}
+    else{const cs=[];for(const f of genFiles.value){const fd=new FormData();fd.append('file',f.raw);const r=await unitTest.generateFromFile(fd);cs.push('// ==== '+f.name+' ====\n'+(r.testCode||''))};out.value=cs.join('\n\n')}
+    ElMessage.success('完成')
+  }catch(e){ElMessage.error(e.message)}finally{gen.value=false}
 }
+function copyG(){navigator.clipboard.writeText(out.value);ElMessage.success('已复制')}
 
-function handleGenFileRemove(file) {
-  const idx = genFileList.value.indexOf(file)
-  if (idx > -1) genFileList.value.splice(idx, 1)
-}
-
-function handleGenFolderSelect(e) {
-  const files = e.target.files
-  if (!files || files.length === 0) return
-  for (const f of files) {
-    genFileList.value.push({ name: f.webkitRelativePath || f.name, raw: f })
-  }
-  e.target.value = ''
-}
-
-function handleCovFile(file, type) {
-  if (type === 'source') {
-    sourceFileList.value.push(file)
-  } else {
-    testFileList.value.push(file)
-  }
-}
-
-function handleCovFileRemove(file, type) {
-  const list = type === 'source' ? sourceFileList.value : testFileList.value
-  const idx = list.indexOf(file)
-  if (idx > -1) list.splice(idx, 1)
-}
-
-function handleCovFolderSelect(e, type) {
-  const files = e.target.files
-  if (!files || files.length === 0) return
-  for (const f of files) {
-    const wrapped = { name: f.webkitRelativePath || f.name, raw: f }
-    if (type === 'source') {
-      sourceFileList.value.push(wrapped)
-    } else {
-      testFileList.value.push(wrapped)
-    }
-  }
-  e.target.value = ''
-}
-
-async function doGenerate() {
-  if (genFileList.value.length === 0) return
-  generating.value = true
-  generatedCode.value = ''
-  try {
-    const codes = []
-    for (const f of genFileList.value) {
-      const fd = new FormData()
-      fd.append('file', f.raw)
-      const res = await unitTest.generateFromFile(fd)
-      codes.push(`// ====== ${f.name} ======\n${res.testCode || ''}`)
-    }
-    generatedCode.value = codes.join('\n\n')
-    ElMessage.success(`已生成 ${genFileList.value.length} 个文件的测试代码`)
-  } catch (e) {
-    ElMessage.error('生成失败: ' + e.message)
-  } finally {
-    generating.value = false
-  }
-}
-
-function copyCode() {
-  navigator.clipboard.writeText(generatedCode.value)
-  ElMessage.success('已复制')
-}
-
-async function doAnalyze() {
-  if (sourceFileList.value.length === 0) return
-  analyzing.value = true
-  coverageReport.value = null
-  try {
-    const sourceFile = sourceFileList.value[0].raw
-    const testFile = testFileList.value.length > 0 ? testFileList.value[0].raw : null
-    const fd = new FormData()
-    fd.append('sourceFile', sourceFile)
-    if (testFile) fd.append('testFile', testFile)
-    const res = await unitTest.analyzeFromFiles(fd)
-    coverageReport.value = res
-  } catch (e) {
-    ElMessage.error('分析失败: ' + e.message)
-  } finally {
-    analyzing.value = false
-  }
+async function doAna(){
+  ana.value=true;cov.value=null
+  try{
+    if(cMode.value==='paste'){cov.value=await unitTest.analyzeCoverage({className:cName.value||'PastedCode',sourceCode:cSrcCode.value,testCode:cTstCode.value})}
+    else{const fd=new FormData();fd.append('sourceFile',srcFiles.value[0].raw);if(tstFiles.value.length)fd.append('testFile',tstFiles.value[0].raw);cov.value=await unitTest.analyzeFromFiles(fd)}
+  }catch(e){ElMessage.error(e.message)}finally{ana.value=false}
 }
 </script>
 
 <style scoped>
-.card-flex-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.upload-text {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-.file-label {
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 8px;
-  color: var(--text-primary);
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 0;
-  color: var(--text-secondary);
-}
-.empty-state p { margin-top: 12px; }
-
-.code-output :deep(textarea) {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.coverage-metric { text-align: center; }
-.metric-label { font-size: 13px; font-weight: 500; margin-top: 8px; }
-.metric-target { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
-.ml-8 { margin-left: 8px; }
+.card-title { font-weight:600;font-size:14px; }
+.out-head { display:flex;align-items:center;justify-content:space-between; }
+.mode-tabs { display:flex;background:var(--color-border-light);border-radius:8px;padding:3px;margin-bottom:10px; }
+.mode-btn { flex:1;padding:6px 0;border:none;background:transparent;font-size:12px;color:var(--color-text-secondary);border-radius:6px;cursor:pointer;transition:all .15s var(--ease);font-family:var(--font-sans); }
+.mode-btn.active { background:#fff;color:var(--color-text);box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.code-area :deep(textarea) { font-family:var(--font-mono);font-size:12px;line-height:1.5; }
+.mt-sm { margin-top:8px; }
+.zone { display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0; }
+.zone-label { font-size:13px;color:var(--color-text-secondary); }
+.zone-sm { display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 0; }
+.zone-label-sm { font-size:12px;color:var(--color-text-muted); }
+.aux-btn { width:100%;margin-top:6px; }
+.act-btn { width:100%;margin-top:14px;height:40px;font-weight:600; }
+.fld { margin-bottom:14px; }
+.fld-label { font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:6px; }
+.code-out :deep(textarea) { font-family:var(--font-mono);font-size:12px;line-height:1.6; }
+.empty { text-align:center;padding:80px 0;color:var(--color-text-muted);font-size:14px; }
+.cov-dash { padding:4px 0; }
+.cov-row { display:flex;justify-content:space-around; }
+.cov-cell { text-align:center; }
+.cov-pct { font-size:14px;font-weight:700; }
+.cov-label { font-size:11px;color:var(--color-text-secondary);margin-top:4px; }
+.cov-rating { text-align:center;margin-top:4px; }
+.cov-grade { font-size:28px;font-weight:700; }
+.g-优秀{color:#34c759}.g-良好{color:#00b96b}.g-待改进{color:#ff9500}
+.rtag { font-size:11px;padding:4px 10px;border-radius:4px;font-weight:500; }
+.r-低{background:var(--color-success-bg);color:#1a7a3a}.r-中{background:var(--color-warning-bg);color:#92400e}.r-高{background:var(--color-danger-bg);color:#991b1b}.r-neutral{background:var(--color-border-light);color:var(--color-text-secondary)}
+.cov-tags { margin-top:10px;display:flex;gap:8px;justify-content:center; }
 </style>

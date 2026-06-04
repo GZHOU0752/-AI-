@@ -31,8 +31,8 @@ public class KnowledgeBaseController {
 
     @PostMapping("/ask")
     public ResponseEntity<Map<String, String>> ask(@RequestBody Map<String, String> request) {
-        String sessionId = request.getOrDefault("sessionId", "default");
-        String userId = request.getOrDefault("userId", "anonymous");
+        String sessionId = String.valueOf(request.getOrDefault("sessionId", "default"));
+        String userId = String.valueOf(request.getOrDefault("userId", "anonymous"));
         String question = request.get("question");
 
         if (question == null || question.trim().isEmpty()) {
@@ -95,5 +95,16 @@ public class KnowledgeBaseController {
         String query = request.get("query");
         List<Map<String, Object>> results = knowledgeBaseService.searchKnowledge(query);
         return ResponseEntity.ok(results);
+    }
+
+    @GetMapping("/documents")
+    public ResponseEntity<List<Map<String, Object>>> listDocuments() {
+        return ResponseEntity.ok(knowledgeBaseService.listDocuments());
+    }
+
+    @DeleteMapping("/documents/{id}")
+    public ResponseEntity<Map<String, String>> deleteDocument(@PathVariable String id) {
+        knowledgeBaseService.deleteDocument(id);
+        return ResponseEntity.ok(Map.of("status", "success", "message", "文档已删除"));
     }
 }

@@ -2,6 +2,7 @@ package com.ruima.ai.center.service;
 
 import com.ruima.ai.center.model.dto.KnowledgeDocument;
 import java.util.List;
+import java.util.Map;
 
 /**
  * RAG（检索增强生成）服务
@@ -33,4 +34,14 @@ public interface RagService {
      * 批量文档入库
      */
     void ingestDocuments(List<KnowledgeDocument> documents);
+
+    /**
+     * 列出所有已入库文档
+     */
+    List<Map<String, Object>> listDocuments();
+
+    /**
+     * 删除指定文档及其向量
+     */
+    boolean deleteDocument(String documentId);
 }

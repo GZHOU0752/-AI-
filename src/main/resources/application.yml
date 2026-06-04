@@ -16,15 +16,34 @@ spring:
         max-idle: 10
         min-idle: 5
     timeout: 3000ms
+  datasource:
+    url: jdbc:mysql://localhost:3306/ruima_ai?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: zwb0821.
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.MySQL8Dialect
 
 # Langchain4j / LLM 配置
 langchain4j:
+  # DeepSeek: 对话模型 (OpenAI 兼容)
+  deepseek:
+    api-key: ${DEEPSEEK_API_KEY:}
+    base-url: https://api.deepseek.com
+    chat-model: deepseek-chat
+    temperature: 0.3
+    max-tokens: 8192
+  # DashScope: 仅用于 Embedding
   dashscope:
     api-key: ${DASHSCOPE_API_KEY:}
-    chat-model: qwen-plus
     embedding-model: text-embedding-v3
-    temperature: 0.3
-    max-tokens: 4096
+  # Chroma 向量库
+  chroma:
+    base-url: ${CHROMA_URL:http://localhost:8000}
+    collection-name: ruima-embeddings
   memory:
     short-term:
       window-size: 10

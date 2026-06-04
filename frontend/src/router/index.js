@@ -2,6 +2,11 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
   {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/Login.vue'),
+  },
+  {
     path: '/',
     component: () => import('@/components/AppLayout.vue'),
     redirect: '/code-review',
@@ -37,6 +42,20 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes
+})
+
+// 路由守卫：未登录跳转登录页
+router.beforeEach((to) => {
+  if (to.name !== 'Login') {
+    try {
+      const raw = localStorage.getItem('ruima_auth')
+      if (!raw) return { name: 'Login' }
+      const auth = JSON.parse(raw)
+      if (!auth.loggedIn) return { name: 'Login' }
+    } catch (e) {
+      return { name: 'Login' }
+    }
+  }
 })
 
 export default router

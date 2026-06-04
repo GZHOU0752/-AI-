@@ -16,8 +16,9 @@ api.interceptors.response.use(
 
 // ==================== AI Code Review ====================
 export const aiCodeReview = {
-  review(data) {
-    return api.post('/api/aicr/review', data)
+  review(data, userId) {
+    const url = userId ? `/api/aicr/review?userId=${userId}` : '/api/aicr/review'
+    return api.post(url, data)
   },
   reviewFiles(formData) {
     return api.post('/api/aicr/review/files', formData, {
@@ -27,6 +28,12 @@ export const aiCodeReview = {
   },
   health() {
     return api.get('/api/aicr/health')
+  },
+  listHistory(userId) {
+    return api.get('/api/aicr/history', { params: { userId } })
+  },
+  deleteHistory(id, userId) {
+    return api.delete(`/api/aicr/history/${id}`, { params: { userId } })
   }
 }
 
@@ -51,6 +58,12 @@ export const knowledgeBase = {
   },
   search(query) {
     return api.post('/api/kb/search', { query })
+  },
+  listDocuments() {
+    return api.get('/api/kb/documents')
+  },
+  deleteDocument(id) {
+    return api.delete(`/api/kb/documents/${id}`)
   }
 }
 
@@ -95,5 +108,18 @@ export const unitTest = {
   },
   generateReport(data) {
     return api.post('/api/test/coverage/report', data)
+  }
+}
+
+// ==================== 认证 ====================
+export const authApi = {
+  login(username, password) {
+    return api.post('/api/auth/login', { username, password })
+  },
+  register(username, password) {
+    return api.post('/api/auth/register', { username, password })
+  },
+  changePassword(userId, oldPassword, newPassword) {
+    return api.put('/api/auth/password', { userId, oldPassword, newPassword })
   }
 }

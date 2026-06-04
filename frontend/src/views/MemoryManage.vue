@@ -2,127 +2,83 @@
   <div class="page-container">
     <div class="page-header">
       <h2>记忆管理</h2>
+      <p>管理短期会话上下文与长期知识记忆</p>
     </div>
 
     <el-row :gutter="20">
-      <!-- 左侧：短期记忆 -->
       <el-col :span="12">
-        <el-card shadow="never">
+        <el-card shadow="never" class="card">
           <template #header>
-            <div class="card-title">
-              <span><el-icon color="#3b82f6"><Timer /></el-icon> 短期记忆</span>
-              <el-tag size="small" type="primary">滑动窗口 | Redis</el-tag>
+            <div class="head">
+              <span class="card-title">短期记忆</span>
             </div>
           </template>
 
-          <div class="card-toolbar">
-            <el-input v-model="stSessionId" placeholder="会话ID" size="small" style="width:180px" />
-            <el-button type="primary" size="small" @click="loadShortTerm">加载历史</el-button>
-            <el-button size="small" @click="generateSummary">生成摘要</el-button>
+          <div class="tool">
+            <el-select v-model="sid" placeholder="选择会话" size="small" class="tool-sel" filterable @change="onSessionChange">
+              <el-option v-for="s in sessions" :key="s.sessionId" :label="s.sessionId" :value="s.sessionId">
+                <span style="font-family:var(--font-mono);font-size:12px">{{ s.sessionId }}</span>
+                <span style="float:right;color:var(--color-text-muted);font-size:11px;margin-left:8px">{{ s.preview?.substring(0,20) || '' }}</span>
+              </el-option>
+            </el-select>
+            <el-button type="primary" size="small" :disabled="!sid" @click="load">加载</el-button>
+            <el-button size="small" :disabled="!sid" @click="doSummary">摘要</el-button>
           </div>
 
-          <el-alert
-            v-if="stSummary"
-            :title="'会话摘要'"
-            :description="stSummary"
-            type="info"
-            :closable="true"
-            @close="stSummary = ''"
-            class="mb-12"
-          />
-
-          <div v-if="stMessages.length === 0" class="empty-block">
-            <p>暂无对话历史，输入会话ID加载</p>
+          <div v-if="sum" class="sum-box">
+            <div class="sum-head">会话摘要</div>
+            <p class="sum-text">{{ sum }}</p>
+            <span class="sum-close" @click="sum=''">&times;</span>
           </div>
 
-          <div class="memory-list">
-            <div
-              v-for="(msg, i) in stMessages"
-              :key="i"
-              :class="['memory-item', msg.role === 'user' ? 'user' : 'assistant']"
-            >
-              <div class="memory-item-header">
-                <el-tag :type="msg.role === 'user' ? '' : 'info'" size="small">
-                  {{ msg.role === 'user' ? '用户' : 'AI' }}
-                </el-tag>
-                <span class="memory-time">{{ formatTime(msg.timestamp) }}</span>
+          <div class="msg-list">
+            <div v-if="!msgs.length" class="empty">选择会话后点击加载</div>
+            <div v-for="(m,i) in msgs" :key="i" :class="['mi', m.role]">
+              <div class="mi-head">
+                <span class="mi-role">{{ m.role==='user'?'用户':m.role==='assistant'?'AI':'系统' }}</span>
+                <span class="mi-time">{{ fmt(m.timestamp) }}</span>
               </div>
-              <p class="memory-text">{{ msg.content?.substring(0, 200) }}{{ msg.content?.length > 200 ? '...' : '' }}</p>
+              <p class="mi-body">{{ m.content }}</p>
             </div>
           </div>
 
-          <el-divider />
-
-          <div class="add-memory-form">
-            <el-input
-              v-model="newStMessage"
-              placeholder="手动添加消息..."
-              size="small"
-            />
-            <el-button-group class="mt-8">
-              <el-button size="small" @click="addMessage('user')">添加用户消息</el-button>
-              <el-button size="small" type="primary" @click="addMessage('assistant')">添加AI消息</el-button>
-            </el-button-group>
-          </div>
         </el-card>
       </el-col>
 
-      <!-- 右侧：长期记忆 -->
       <el-col :span="12">
-        <el-card shadow="never">
+        <el-card shadow="never" class="card">
           <template #header>
-            <div class="card-title">
-              <span><el-icon color="#6366f1"><Coin /></el-icon> 长期记忆</span>
-              <el-tag size="small" type="info">Pinecone | 向量检索</el-tag>
+            <div class="head">
+              <span class="card-title">长期记忆</span>
             </div>
           </template>
 
-          <!-- 存储 -->
-          <div class="section-title">存储新记忆</div>
-          <div class="add-memory-form">
-            <el-input v-model="ltUserId" placeholder="用户ID" size="small" class="mb-8" />
-            <el-input
-              v-model="ltContent"
-              type="textarea"
-              :rows="3"
-              placeholder="记忆内容..."
-              size="small"
-            />
-            <el-select v-model="ltCategory" placeholder="分类" size="small" class="mt-8" style="width:100%">
-              <el-option label="技术文档" value="tech_doc" />
-              <el-option label="问答记录" value="qa_history" />
-              <el-option label="代码审查" value="code_review" />
-              <el-option label="项目规范" value="project_rule" />
-              <el-option label="其他" value="general" />
+          <div class="sec">
+            <div class="sec-label">存入新记忆</div>
+            <el-input v-model="lc" type="textarea" :rows="3" placeholder="输入需要长期保留的知识..." size="small" />
+            <el-select v-model="cat" size="small" class="gap" style="width:100%">
+              <el-option v-for="o in cats" :key="o.v" :label="o.l" :value="o.v" />
             </el-select>
-            <el-button type="primary" size="small" class="mt-8" :loading="storing" @click="storeLongTerm" style="width:100%">
-              存入长期记忆
-            </el-button>
+            <el-button type="primary" size="small" class="gap" :loading="saving" @click="store" style="width:100%">存入长期记忆</el-button>
           </div>
 
           <el-divider />
 
-          <!-- 召回 -->
-          <div class="section-title">语义相似度召回</div>
-          <div class="add-memory-form">
-            <el-input v-model="ltQuery" placeholder="输入查询内容..." size="small" />
-            <el-button type="primary" size="small" class="mt-8" :loading="recalling" @click="recallLongTerm" style="width:100%">
-              搜索记忆
-            </el-button>
-          </div>
-
-          <div v-if="ltResults.length" class="recall-results mt-12">
-            <div class="section-title">召回结果 (相似度 ≥ 75%)</div>
-            <div v-for="(item, i) in ltResults" :key="i" class="recall-item">
-              <div class="recall-index">#{{ i + 1 }}</div>
-              <p>{{ item }}</p>
+          <div class="sec">
+            <div class="sec-label">相似度召回</div>
+            <div class="recall-row">
+              <el-input v-model="lq" placeholder="输入查询..." size="small" class="recall-inp" />
+              <el-button type="primary" size="small" :loading="recalling" @click="recall">搜索</el-button>
             </div>
           </div>
 
-          <div v-if="ltResults.length === 0 && recalled" class="empty-block mt-12">
-            <p>未找到相关记忆</p>
+          <div v-if="lr.length" class="recall-list">
+            <div v-for="(r,i) in lr" :key="i" class="ri">
+              <span class="ri-n">{{ i+1 }}</span>
+              <p>{{ r }}</p>
+            </div>
           </div>
-
+          <div v-if="!lr.length && recalled" class="empty">未找到相关记忆</div>
         </el-card>
       </el-col>
     </el-row>
@@ -130,201 +86,62 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { Timer, Coin } from '@element-plus/icons-vue'
-import { memoryApi } from '@/api'
+import { ref, onMounted } from 'vue'
+import { memoryApi, knowledgeBase } from '@/api'
+import { useAuth } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
-import dayjs from 'dayjs'
 
-// 短期记忆
-const stSessionId = ref('default')
-const stMessages = ref([])
-const newStMessage = ref('')
-const stSummary = ref('')
+const { state: authState } = useAuth()
 
-// 长期记忆
-const ltUserId = ref('user_001')
-const ltContent = ref('')
-const ltCategory = ref('general')
-const ltQuery = ref('')
-const ltResults = ref([])
-const storing = ref(false)
-const recalling = ref(false)
-const recalled = ref(false)
+const sid = ref(''); const sessions = ref([]); const msgs = ref([]); const sum = ref('')
+const lc = ref(''); const cat = ref('general'); const lq = ref(''); const lr = ref([])
+const saving = ref(false); const recalling = ref(false); const recalled = ref(false)
+const cats = [{l:'技术文档',v:'tech_doc'},{l:'问答记录',v:'qa_history'},{l:'代码审查',v:'code_review'},{l:'项目规范',v:'project_rule'},{l:'其他',v:'general'}]
 
-function formatTime(ts) {
-  if (!ts) return ''
-  return dayjs(ts).format('MM-DD HH:mm:ss')
-}
-
-async function loadShortTerm() {
-  try {
-    const res = await memoryApi.getHistory(stSessionId.value)
-    stMessages.value = res || []
-    ElMessage.success(`加载了 ${stMessages.value.length} 条消息`)
-  } catch (e) {
-    ElMessage.error('加载失败')
-  }
-}
-
-async function addMessage(role) {
-  if (!newStMessage.value.trim()) return
-  try {
-    await memoryApi.addMessage({
-      role,
-      content: newStMessage.value,
-      sessionId: stSessionId.value
-    })
-    newStMessage.value = ''
-    await loadShortTerm()
-  } catch (e) {
-    ElMessage.error('添加失败')
-  }
-}
-
-async function generateSummary() {
-  try {
-    const res = await memoryApi.generateSummary(stSessionId.value)
-    stSummary.value = res.summary || res
-  } catch (e) {
-    ElMessage.error('生成摘要失败')
-  }
-}
-
-async function storeLongTerm() {
-  if (!ltContent.value.trim()) {
-    ElMessage.warning('请输入记忆内容')
-    return
-  }
-  storing.value = true
-  try {
-    await memoryApi.storeLongTerm({
-      userId: ltUserId.value,
-      content: ltContent.value,
-      category: ltCategory.value
-    })
-    ElMessage.success('记忆已存储')
-    ltContent.value = ''
-  } catch (e) {
-    ElMessage.error('存储失败')
-  } finally {
-    storing.value = false
-  }
-}
-
-async function recallLongTerm() {
-  if (!ltQuery.value.trim()) return
-  recalling.value = true
-  recalled.value = false
-  ltResults.value = []
-  try {
-    const res = await memoryApi.recallLongTerm({
-      userId: ltUserId.value,
-      query: ltQuery.value
-    })
-    ltResults.value = res.memories || []
-    recalled.value = true
-  } catch (e) {
-    ElMessage.error('召回失败')
-  } finally {
-    recalling.value = false
-  }
-}
+function fmt(t) { return t ? new Date(t).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '' }
+async function fetchSessions(){try{sessions.value=await knowledgeBase.listSessions(authState.userId)||[]}catch(e){}}
+function onSessionChange(){msgs.value=[];sum.value=''}
+async function load(){if(!sid.value)return;try{msgs.value=await memoryApi.getHistory(sid.value)||[]}catch(e){ElMessage.error('加载失败')}}
+onMounted(()=>{fetchSessions()})
+async function doSummary(){try{const r=await memoryApi.generateSummary(sid.value);sum.value=r.summary||r}catch(e){ElMessage.error('失败')}}
+async function store(){if(!lc.value.trim()){ElMessage.warning('请输入内容');return};saving.value=true;try{await memoryApi.storeLongTerm({userId:authState.userId,content:lc.value,category:cat.value});ElMessage.success('已存储');lc.value=''}catch(e){ElMessage.error('失败')}finally{saving.value=false}}
+async function recall(){if(!lq.value.trim())return;recalling.value=true;recalled.value=false;lr.value=[];try{const r=await memoryApi.recallLongTerm({userId:authState.userId,query:lq.value});lr.value=r.memories||[];recalled.value=true}catch(e){ElMessage.error('失败')}finally{recalling.value=false}}
 </script>
 
 <style scoped>
-.card-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 600;
-}
-.card-title span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.card-title { font-weight: 600; font-size: 14px; }
+.head { display: flex; align-items: center; justify-content: space-between; }
+.card { height: calc(100dvh - 190px); display: flex; flex-direction: column; }
+.card :deep(.el-card__body) { flex:1; overflow-y:auto; display:flex; flex-direction:column; }
 
-.card-toolbar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
+.tool { display: flex; gap: 6px; margin-bottom: 14px; }
+.tool-sel { flex: 1; }
 
-.memory-list {
-  max-height: 360px;
-  overflow-y: auto;
-}
-.memory-item {
-  padding: 10px 12px;
-  border-radius: 8px;
-  margin-bottom: 8px;
-}
-.memory-item.user {
-  background: #eff6ff;
-  border-left: 3px solid #3b82f6;
-}
-.memory-item.assistant {
-  background: #f5f3ff;
-  border-left: 3px solid #6366f1;
-}
-.memory-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-}
-.memory-time {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-.memory-text {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-primary);
-}
+.sum-box { position:relative; padding:12px 14px; margin-bottom:12px; background:var(--color-brand-light); border:1px solid #b7ebd0; border-radius:var(--radius-sm); }
+.sum-head { font-size:11px; font-weight:600; color:var(--color-brand); text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+.sum-text { font-size:13px; line-height:1.6; color:var(--color-text); }
+.sum-close { position:absolute; top:8px; right:10px; border:none; background:none; font-size:16px; color:var(--color-text-muted); cursor:pointer; }
 
-.add-memory-form {
-  display: flex;
-  flex-direction: column;
-}
+.msg-list { flex:1; overflow-y:auto; margin-bottom:10px; min-height:0; }
+.mi { padding:8px 10px; border-radius:6px; margin-bottom:6px; }
+.mi.user { background:var(--color-brand-light); }
+.mi.assistant { background:var(--color-border-light); }
+.mi.system { background:var(--color-warning-bg); }
+.mi-head { display:flex; justify-content:space-between; margin-bottom:2px; }
+.mi-role { font-size:11px; font-weight:600; color:var(--color-text-secondary); }
+.mi-time { font-size:11px; color:var(--color-text-muted); }
+.mi-body { font-size:12px; line-height:1.6; }
 
-.section-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
+.sec { margin-bottom:4px; }
+.sec-label { font-size:12px; font-weight:500; color:var(--color-text-secondary); margin-bottom:6px; }
+.gap { margin-top:8px; }
 
-.empty-block {
-  text-align: center;
-  padding: 48px 0;
-  color: var(--text-secondary);
-}
+.recall-row { display:flex; gap:6px; }
+.recall-inp { flex:1; }
+.recall-list { max-height:180px; overflow-y:auto; margin-top:10px; }
+.ri { display:flex; gap:8px; padding:8px 0; border-bottom:1px solid var(--color-border-light); }
+.ri-n { font-weight:700; font-size:12px; color:var(--color-brand); flex-shrink:0; width:18px; }
+.ri p { font-size:12px; line-height:1.5; }
 
-.recall-results {
-  max-height: 240px;
-  overflow-y: auto;
-}
-.recall-item {
-  display: flex;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border-color);
-}
-.recall-index {
-  font-weight: 700;
-  color: #6366f1;
-  flex-shrink: 0;
-}
-.recall-item p {
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.mb-8 { margin-bottom: 8px; }
-.mb-12 { margin-bottom: 12px; }
-.mt-8 { margin-top: 8px; }
-.mt-12 { margin-top: 12px; }
+.empty { text-align:center; padding:48px 0; color:var(--color-text-muted); font-size:13px; }
 </style>

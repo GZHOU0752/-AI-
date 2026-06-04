@@ -12,133 +12,57 @@ import java.util.stream.Collectors;
  */
 public class PromptTemplate {
 
-    private static final String ROLE_SETTING =
-            "## 评审角色定位\n\n" +
-            "作为Java资深架构师/技术专家进行代码评审，分析代码变更并提供专业的评审意见。\n\n";
-
-    private static final String REVIEW_PRINCIPLES =
-            "## 评审原则\n\n" +
-            "- **客观性**: 基于技术标准，避免主观偏见\n" +
-            "- **建设性**: 提供具体可行的改进建议\n" +
-            "- **教育性**: 解释问题原因和最佳实践\n" +
-            "- **完整性**: 覆盖功能、性能、安全、可维护性等多个维度\n\n";
-
-    private static final String PROBLEM_CLASSIFICATION =
-            "## 问题分级\n\n" +
-            "- Critical (必须修复): 安全漏洞、严重性能问题、数据一致性问题、线程安全问题、空指针\n" +
-            "- Warning (建议修复): 代码质量问题、潜在性能隐患、可维护性问题\n" +
-            "- Info (优化建议): 代码风格改进、最佳实践建议、架构优化建议、测试覆盖不足\n\n";
-
-    private static final String REVIEW_DIMENSIONS =
-            "## 评审维度检查清单\n\n" +
-            "### 1. 代码质量\n" +
-            "- 代码逻辑清晰，易于理解\n" +
-            "- 遵循项目的编码规范和命名约定\n" +
-            "- 方法长度适中，单一职责原则\n" +
-            "- 没有明显的性能问题或算法缺陷\n" +
-            "- 错误处理完整且得当\n\n" +
-            "### 2. 安全性\n" +
-            "- 输入验证完整，包括参数校验和边界检查\n" +
-            "- 权限控制正确，遵循最小权限原则\n" +
-            "- 敏感数据正确加密和脱敏\n" +
-            "- SQL注入防护措施到位\n" +
-            "- XSS和CSRF防护\n\n" +
-            "### 3. 可维护性\n" +
-            "- 类和方法职责单一，高内聚低耦合\n" +
-            "- 适当的设计模式使用\n" +
-            "- 合理的变量和方法命名\n" +
-            "- 代码复用性好，避免重复代码\n\n" +
-            "### 4. 架构设计\n" +
-            "- 符合现有架构模式和分层设计\n" +
-            "- 模块边界清晰，依赖关系合理\n" +
-            "- 接口设计简洁明确\n\n" +
-            "### 5. Java项目特定要求\n" +
-            "- 遵循Spring框架最佳实践\n" +
-            "- 正确使用注解和依赖注入\n" +
-            "- 异常处理机制完善\n" +
-            "- 线程安全考虑充分\n" +
-            "- 空指针问题处理妥当\n\n" +
-            "### 6. 数据库相关\n" +
-            "- SQL语句性能优化，避免N+1查询\n" +
-            "- 索引使用合理且有效\n" +
-            "- 事务边界清晰\n\n" +
-            "### 7. 测试相关\n" +
-            "- 单元测试覆盖核心业务逻辑\n" +
-            "- 测试用例设计合理\n\n" +
-            "### 8. 性能考量\n" +
-            "- 时间复杂度和空间复杂度分析\n" +
-            "- 缓存使用策略合理\n" +
-            "- 批量操作优化\n\n";
-
-    private static final String OUTPUT_FORMAT =
-            "## 评审输出格式\n\n" +
-            "### 评审报告结构\n\n" +
-            "**评审概览**\n" +
-            "- 变更意图: [简要说明]\n" +
-            "- 影响范围: [分析]\n" +
-            "- 整体评分: [X/5分]\n\n" +
-            "**Critical 问题 (必须修复)**\n" +
-            "每个问题格式:\n" +
-            "- 问题类型: Critical\n" +
-            "- 位置: [文件名:行号]\n" +
-            "- 问题描述: [具体问题说明]\n" +
-            "- 影响: [潜在影响分析]\n" +
-            "- 建议: [具体改进方案]\n\n" +
-            "**Warning 问题 (建议修复)**\n" +
-            "[同上格式]\n\n" +
-            "**Info 优化建议**\n" +
-            "[同上格式]\n\n" +
-            "**总结**\n" +
-            "[整体评价和改进方向]\n\n";
-
-    private static final String RESPONSIBILITY_BOUNDARY =
-            "## 评审职责界限\n\n" +
-            "应该做的: 识别代码问题和风险、提供改进建议和最佳实践、解释技术原理\n" +
-            "不应该做的: 直接修改或重写代码、执行任何代码变更操作、替代人工评审的最终确认\n\n";
+    private static final String CODE_REVIEW_SYSTEM =
+            "你是资深 Java 代码审查专家。逐行分析代码，按以下标准分类输出，不要遗漏任何问题。\n\n" +
+            "## Critical（必须修复，以下任一情况即报 Critical）\n\n" +
+            "- 空指针: 变量赋值 null 后未判空直接调用方法/访问字段；数组/集合/方法返回值未判空即使用\n" +
+            "- 安全漏洞: SQL 注入；XSS/CSRF；敏感信息未加密/脱敏；权限校验缺失；任意文件读取\n" +
+            "- 数据安全: 共享变量无同步(线程安全)；数据库事务边界错误导致数据不一致\n" +
+            "- 资源泄漏: IO流/数据库连接/网络连接未在 finally 或 try-with-resources 中关闭\n" +
+            "- 严重性能: OOM 风险(大对象/无限缓存)；死锁/活锁；SQL 全表扫描无索引\n\n" +
+            "## Warning（建议修复，以下任一情况即报 Warning）\n\n" +
+            "- 异常处理: 空 catch 块；catch Exception 仅 printStackTrace；finally 中有 return\n" +
+            "- 代码质量: 方法>50行；圈复杂度>10；重复代码>5行；硬编码配置值/魔法数字\n" +
+            "- 可维护性: 类职责不单一；接口设计不合理；缺少必要注释；命名不规范\n" +
+            "- 性能隐患: N+1 查询；缓存策略不当；不必要的对象创建；String 循环拼接\n" +
+            "- 架构问题: 循环依赖；违反分层原则；过度耦合\n" +
+            "- 数据库: 缺少必要索引；事务范围过大/过小；连接池配置不当\n" +
+            "- 测试: 核心逻辑缺少单元测试；测试仅覆盖 happy path\n\n" +
+            "## Info（优化建议，以下情况报 Info）\n\n" +
+            "- 代码风格: 可读性优化；lambda/Stream 可简化；Optional 可用\n" +
+            "- 设计优化: 设计模式建议；架构微调\n" +
+            "- 最佳实践: Java 8+ 新特性建议；Spring Boot 最佳实践\n\n" +
+            "## 输出格式（每个问题严格按此模板，问题之间空行分隔）\n\n" +
+            "问题类型: Critical\n" +
+            "位置: File.java:42\n" +
+            "问题描述: xxx 变量赋值为 null 后在第 42 行直接调用了 length() 方法\n" +
+            "影响: 运行时抛出 NullPointerException，导致当前请求失败\n" +
+            "建议: 在调用前增加 null 判断，或使用 Optional.ofNullable(xxx).map(String::length).orElse(0)\n\n" +
+            "（每个问题以 \"问题类型:\" 开头，按上述格式输出）\n\n" +
+            "## 开头输出\n\n" +
+            "整体评分: 2\n" +
+            "变更意图: 新增空指针示例代码\n" +
+            "影响范围: 当前文件运行时安全\n\n" +
+            "## 结尾输出\n\n" +
+            "总结: 共发现 X 个问题，建议优先修复 Critical 级别的空指针风险\n\n" +
+            "注意: 必须逐行检查，对每一处潜在的 null 调用、资源未关闭、异常未处理都必须报告。不要遗漏。";
 
     public static String buildCodeReviewPrompt(CodeReviewRequest request) {
-        StringBuilder prompt = new StringBuilder();
-        prompt.append(ROLE_SETTING);
-        prompt.append(REVIEW_PRINCIPLES);
-        prompt.append(RESPONSIBILITY_BOUNDARY);
-        prompt.append(PROBLEM_CLASSIFICATION);
-        prompt.append(REVIEW_DIMENSIONS);
-        prompt.append(OUTPUT_FORMAT);
+        StringBuilder sb = new StringBuilder();
+        sb.append(CODE_REVIEW_SYSTEM);
+        sb.append("\n## 待审查代码\n\n");
 
-        prompt.append("## 本次评审上下文\n\n");
-        prompt.append("**PR/MR标题**: ").append(request.getTitle()).append("\n\n");
-        if (request.getDescription() != null && !request.getDescription().isEmpty()) {
-            prompt.append("**变更描述**: ").append(request.getDescription()).append("\n\n");
-        }
-        if (request.getBranchName() != null) {
-            prompt.append("**源分支**: ").append(request.getBranchName());
-            prompt.append(" -> **目标分支**: ").append(request.getTargetBranch()).append("\n\n");
-        }
-
-        prompt.append("**关注的评审维度**: ");
-        List<String> dimensions = request.getFocusDimensions();
-        if (dimensions != null && !dimensions.isEmpty()) {
-            prompt.append(String.join(", ", dimensions));
-        } else {
-            prompt.append("全部8项维度");
-        }
-        prompt.append("\n\n");
-
-        prompt.append("## 代码变更内容\n\n");
         for (CodeReviewRequest.FileChange file : request.getFileChanges()) {
-            prompt.append("### 文件: ").append(file.getFilePath())
-                    .append(" [").append(file.getChangeType()).append("]\n\n");
-            prompt.append("```java\n");
-            String diffContent = file.getDiffContent();
-            if (diffContent != null && diffContent.length() > 8000) {
-                diffContent = diffContent.substring(0, 8000) + "\n... (内容已截断)";
+            sb.append("### ").append(file.getFilePath()).append("\n```java\n");
+            String content = file.getDiffContent();
+            if (content != null && content.length() > 10000) {
+                content = content.substring(0, 10000) + "\n// 内容已截断";
             }
-            prompt.append(diffContent != null ? diffContent : "无变更内容");
-            prompt.append("\n```\n\n");
+            sb.append(content != null ? content : "").append("\n```\n\n");
         }
 
-        prompt.append("请按照上述结构化格式提供完整的评审报告。");
-        return prompt.toString();
+        sb.append("请逐行检查上述代码，严格按输出格式返回完整的评审结果。");
+        return sb.toString();
     }
 
     public static String buildUnitTestPrompt(String className, String sourceCode, String packageName) {

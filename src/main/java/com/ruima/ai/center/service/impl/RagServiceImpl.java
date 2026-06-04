@@ -1,5 +1,6 @@
 package com.ruima.ai.center.service.impl;
 
+import com.ruima.ai.center.config.ChromaV2Client;
 import com.ruima.ai.center.model.dto.KnowledgeDocument;
 import com.ruima.ai.center.service.RagService;
 import com.ruima.ai.center.util.TextChunker;
@@ -31,6 +32,9 @@ public class RagServiceImpl implements RagService {
 
     @Autowired
     private ChatLanguageModel chatLanguageModel;
+
+    @Autowired(required = false)
+    private org.redisson.api.RedissonClient redissonClient;
 
     @Value("${rag.chunking.max-chunk-size:1000}")
     private int maxChunkSize;
@@ -95,6 +99,17 @@ public class RagServiceImpl implements RagService {
         }
 
         log.info("文档入库完成, 分块数: {}", chunks.size());
+
+        // 记录文档元数据到 Redis
+        if (redissonClient != null) {
+            try {
+                org.redisson.api.RMap<String, String> docMap = redissonClient.getMap("ruima:docs");
+                docMap.put(document.getId(), String.format("{\"title\":\"%s\",\"fileType\":\"%s\",\"chunks\":%d,\"time\":%d}",
+                        document.getTitle() != null ? document.getTitle() : "",
+                        document.getFileType() != null ? document.getFileType() : "",
+                        chunks.size(), System.currentTimeMillis()));
+            } catch (Exception ignored) {}
+        }
     }
 
     @Override
@@ -208,6 +223,51 @@ public class RagServiceImpl implements RagService {
                 "回答:";
 
         return chatLanguageModel.generate(answerPrompt);
+    }
+
+    @Override
+    public List<Map<String, Object>> listDocuments() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (redissonClient == null) return result;
+        try {
+            org.redisson.api.RMap<String, String> docMap = redissonClient.getMap("ruima:docs");
+            for (Map.Entry<String, String> entry : docMap.entrySet()) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("id", entry.getKey());
+                try {
+                    com.google.gson.JsonObject json = com.google.gson.JsonParser.parseString(entry.getValue()).getAsJsonObject();
+                    item.put("title", json.get("title").getAsString());
+                    item.put("fileType", json.get("fileType").getAsString());
+                    item.put("chunks", json.get("chunks").getAsInt());
+                    item.put("time", json.get("time").getAsLong());
+                } catch (Exception e) {
+                    item.put("title", entry.getKey());
+                    item.put("chunks", 0);
+                }
+                result.add(item);
+            }
+        } catch (Exception e) {
+            log.warn("获取文档列表失败: {}", e.getMessage());
+        }
+        return result;
+    }
+
+    @Override
+    public boolean deleteDocument(String documentId) {
+        if (embeddingStore instanceof ChromaV2Client) {
+            try {
+                ((ChromaV2Client) embeddingStore).deleteByDocumentId(documentId);
+            } catch (Exception e) {
+                log.warn("Chroma 删除向量失败: {}", e.getMessage());
+            }
+        }
+        if (redissonClient != null) {
+            try {
+                redissonClient.getMap("ruima:docs").remove(documentId);
+            } catch (Exception ignored) {}
+        }
+        log.info("文档已删除: {}", documentId);
+        return true;
     }
 
     @Override

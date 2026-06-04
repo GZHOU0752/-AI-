@@ -53,7 +53,6 @@ public class AiCodeReviewServiceImpl implements AiCodeReviewService {
         report.setId(UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         report.setTitle(request.getTitle());
         report.setReviewTime(LocalDateTime.now().format(DATE_FMT));
-        report.setFormattedReport(formatReport(report));
 
         log.info("AI代码评审完成, 报告ID: {}, Critical: {}, Warning: {}, Info: {}",
                 report.getId(),
@@ -70,41 +69,15 @@ public class AiCodeReviewServiceImpl implements AiCodeReviewService {
         List<CodeReviewIssue> warningIssues = new ArrayList<>();
         List<CodeReviewIssue> infoIssues = new ArrayList<>();
 
+        // 解析概览信息
         report.setOverallScore(extractDouble(aiResponse, SCORE_PATTERN, 3.0));
         report.setChangeIntent(extractField(aiResponse, INTENT_PATTERN));
         report.setImpactScope(extractField(aiResponse, SCOPE_PATTERN));
 
-        String[] sections = aiResponse.split("(?=(?:Critical|Warning|Info)\\s)");
-        for (String section : sections) {
-            IssueSeverity severity = IssueSeverity.valueOf(TYPE_PATTERN.matcher(section).find()
-                    ? TYPE_PATTERN.matcher(section).group(1).toUpperCase() : "INFO");
-
-            List<CodeReviewIssue> targetList;
-            switch (severity) {
-                case CRITICAL: targetList = criticalIssues; break;
-                case WARNING:  targetList = warningIssues;  break;
-                default:       targetList = infoIssues;     break;
-            }
-
-            targetList.addAll(parseIssuesFromSection(section));
-        }
-
-        report.setCriticalIssues(criticalIssues);
-        report.setWarningIssues(warningIssues);
-        report.setInfoIssues(infoIssues);
-        report.setSummary(String.format("共发现 %d 个Critical问题、%d 个Warning问题、%d 个Info建议",
-                criticalIssues.size(), warningIssues.size(), infoIssues.size()));
-
-        return report;
-    }
-
-    private List<CodeReviewIssue> parseIssuesFromSection(String section) {
-        List<CodeReviewIssue> issues = new ArrayList<>();
-        String[] issueBlocks = section.split("(?=问题类型[:：])");
-
-        for (String block : issueBlocks) {
-            if (!block.contains("问题类型")) continue;
-
+        // 按"问题类型:"分割，每个 block 是一个独立问题
+        String[] blocks = aiResponse.split("问题类型[:：]\\s*");
+        for (int i = 1; i < blocks.length; i++) {
+            String block = blocks[i];
             CodeReviewIssue issue = new CodeReviewIssue();
             issue.setSeverity(extractSeverity(block));
             issue.setFilePath(extractField(block, LOCATION_PATTERN, 1));
@@ -115,11 +88,30 @@ public class AiCodeReviewServiceImpl implements AiCodeReviewService {
             issue.setDimension(inferDimension(issue.getDescription()));
 
             if (issue.getDescription() != null && !issue.getDescription().isEmpty()) {
-                issues.add(issue);
+                // 根据关键词自动升级严重级别（兜底模型分类不准）
+                issue.setSeverity(upgradeSeverity(issue));
+                switch (issue.getSeverity()) {
+                    case CRITICAL: criticalIssues.add(issue); break;
+                    case WARNING:  warningIssues.add(issue);  break;
+                    default:       infoIssues.add(issue);     break;
+                }
             }
         }
 
-        return issues;
+        // 解析总结
+        Pattern summaryPattern = Pattern.compile("总结[:：]\\s*(.+)");
+        Matcher sm = summaryPattern.matcher(aiResponse);
+        if (sm.find()) {
+            report.setSummary(sm.group(1).trim());
+        } else {
+            report.setSummary(String.format("共发现 %d 个Critical问题、%d 个Warning问题、%d 个Info建议",
+                    criticalIssues.size(), warningIssues.size(), infoIssues.size()));
+        }
+
+        report.setCriticalIssues(criticalIssues);
+        report.setWarningIssues(warningIssues);
+        report.setInfoIssues(infoIssues);
+        return report;
     }
 
     private static String extractField(String text, Pattern pattern) {
@@ -156,11 +148,46 @@ public class AiCodeReviewServiceImpl implements AiCodeReviewService {
     }
 
     private static IssueSeverity extractSeverity(String text) {
-        Matcher m = TYPE_PATTERN.matcher(text);
-        if (m.find()) {
-            return IssueSeverity.valueOf(m.group(1).toUpperCase());
+        String trimmed = text.trim();
+        for (IssueSeverity s : IssueSeverity.values()) {
+            if (trimmed.startsWith(s.name())) return s;
         }
         return IssueSeverity.INFO;
+    }
+
+    /**
+     * 根据问题描述关键词自动升级严重级别，兜底 LLM 分类不准的问题。
+     */
+    private static IssueSeverity upgradeSeverity(CodeReviewIssue issue) {
+        String desc = (issue.getDescription() != null ? issue.getDescription() : "").toLowerCase();
+        String impact = (issue.getImpact() != null ? issue.getImpact() : "").toLowerCase();
+
+        // 已经是 Critical 则无需升级
+        if (issue.getSeverity() == IssueSeverity.CRITICAL) return IssueSeverity.CRITICAL;
+
+        // 关键词 → 强制升级到 Critical
+        boolean isCritical = desc.contains("空指针") || desc.contains("null") && (desc.contains("调用") || desc.contains("访问") || desc.contains("方法") || desc.contains("属性"))
+                || impact.contains("nullpointer") || impact.contains("npe")
+                || desc.contains("sql注入") || desc.contains("sql 注入")
+                || desc.contains("线程安全") || desc.contains("死锁") || desc.contains("数据不一致")
+                || desc.contains("资源泄漏") || desc.contains("资源泄露") || desc.contains("未关闭")
+                || desc.contains("安全漏洞") || desc.contains("任意文件")
+                || desc.contains("oom") || desc.contains("内存溢出");
+
+        if (isCritical) return IssueSeverity.CRITICAL;
+
+        // 已 Warning 的保持不变，Info 的看是否够 Warning
+        if (issue.getSeverity() == IssueSeverity.WARNING) return IssueSeverity.WARNING;
+
+        boolean isWarning = desc.contains("异常") || desc.contains("catch") || desc.contains("exception")
+                || desc.contains("n+1") || desc.contains("索引")
+                || desc.contains("硬编码") || desc.contains("魔法数字")
+                || desc.contains("重复") || desc.contains("过长")
+                || desc.contains("命名不") || desc.contains("不规范");
+
+        if (isWarning) return IssueSeverity.WARNING;
+
+        return issue.getSeverity();
     }
 
     private ReviewDimension inferDimension(String description) {
@@ -191,45 +218,5 @@ public class AiCodeReviewServiceImpl implements AiCodeReviewService {
             return ReviewDimension.MAINTAINABILITY;
         }
         return ReviewDimension.CODE_QUALITY;
-    }
-
-    private String formatReport(CodeReviewReport report) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("# 代码评审报告\n\n");
-        sb.append("## 评审概览\n\n");
-        sb.append("- **变更意图**: ").append(Objects.toString(report.getChangeIntent(), "")).append("\n");
-        sb.append("- **影响范围**: ").append(Objects.toString(report.getImpactScope(), "")).append("\n");
-        sb.append("- **整体评分**: ").append(report.getOverallScore()).append("/5分\n\n");
-
-        appendIssueSection(sb, "Critical 问题 (必须修复)", "red_circle", report.getCriticalIssues());
-        appendIssueSection(sb, "Warning 问题 (建议修复)", "yellow_circle", report.getWarningIssues());
-        appendIssueSection(sb, "Info 优化建议", "blue_circle", report.getInfoIssues());
-
-        sb.append("---\n\n");
-        sb.append("**评审时间**: ").append(report.getReviewTime()).append("\n");
-        sb.append("**报告ID**: ").append(report.getId()).append("\n");
-
-        return sb.toString();
-    }
-
-    private void appendIssueSection(StringBuilder sb, String title, String icon, List<CodeReviewIssue> issues) {
-        sb.append("## ").append(icon).append(" ").append(title).append("\n\n");
-
-        if (issues == null || issues.isEmpty()) {
-            sb.append("> 无\n\n");
-            return;
-        }
-
-        for (int i = 0; i < issues.size(); i++) {
-            CodeReviewIssue issue = issues.get(i);
-            sb.append("### ").append(i + 1).append(". ").append(Objects.toString(issue.getTitle(), "")).append("\n\n");
-            sb.append("| 属性 | 内容 |\n|------|------|\n");
-            sb.append("| 位置 | ").append(Objects.toString(issue.getFilePath(), ""))
-                    .append(":").append(issue.getLineNumber()).append(" |\n");
-            sb.append("| 维度 | ").append(issue.getDimension() != null ? issue.getDimension().getDisplayName() : "-").append(" |\n");
-            sb.append("| 描述 | ").append(Objects.toString(issue.getDescription(), "")).append(" |\n");
-            sb.append("| 影响 | ").append(Objects.toString(issue.getImpact(), "")).append(" |\n");
-            sb.append("| 建议 | ").append(Objects.toString(issue.getSuggestion(), "")).append(" |\n\n");
-        }
     }
 }

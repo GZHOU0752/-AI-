@@ -29,4 +29,14 @@ public interface KnowledgeBaseService {
      * 搜索知识库
      */
     List<Map<String, Object>> searchKnowledge(String query);
+
+    /**
+     * 获取文档列表
+     */
+    List<Map<String, Object>> listDocuments();
+
+    /**
+     * 删除文档
+     */
+    boolean deleteDocument(String documentId);
 }
